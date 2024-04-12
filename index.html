@@ -1,91 +1,246 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mosaico de Imágenes desde Dropbox</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoom con Scroll y Cámara Posterior</title>
+    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #canvas-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            transition-duration: 150ms;
+            box-shadow: 0 5px 20px 5px #00000044;
+            position: relative; /* Asegúrate de que el contenedor sea relativo para que los efectos de iluminación sean relativos a él */
+        }
+
+        #canvas-container:hover {
+            box-shadow: 0 5px 20px 5px #00000044;
+        }
+
+        #canvas-container .glow {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
+            background-image: radial-gradient(circle at 50% -20%, #ffffff22, #0000000f);
+        }
+
+        canvas {
+            border-radius: 20px; /* Aplicar bordes circulares al canvas */
+            box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.75); /* Efecto de sombra */
+        }
+    </style>
 </head>
 <body>
-  <script>
-    var img;
-    var emoji_0, emoji_64, emoji_128, emoji_192;
-    var zoom = 1; // Zoom inicial
+    <a-scene id="canvas-container" id="glow" style="height: 100%; width: 100%;">
+       
+            
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+        <script>
+            let img;
+            let emojis = [];
+            let zoom = 0.5; // Zoom inicial
+            let minZoom = 0.5; // Zoom mínimo
+            let maxZoom; // Zoom máximo
+            let canvasWidth, canvasHeight;
+            let canvas; // Variable para almacenar el canvas
+            let offsetX = 0; // Desplazamiento X de la imagen
+            let offsetY = 0; // Desplazamiento Y de la imagen
+            let lastMouseX; // Última posición X del mouse al arrastrar
+            let lastMouseY; // Última posición Y del mouse al arrastrar
+            let isDragging = false; // Indicador de si se está arrastrando
 
-    function preload() {
-      img = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/almagua-escuela.jpg");
-      emoji_192 = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/198845101_989500098492476_3555566408394435419_n.jpg"); // Reemplaza "URL_IMAGEN_192" con el enlace directo a la imagen correspondiente en Dropbox
-      emoji_128 = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/434648224_348427008157091_217330225043198393_n.jpg"); // Reemplaza "URL_IMAGEN_128" con el enlace directo a la imagen correspondiente en Dropbox
-      emoji_64 = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/429311705_779736447350065_4516433906161515358_n.jpg");   // Reemplaza "URL_IMAGEN_64" con el enlace directo a la imagen correspondiente en Dropbox
-      emoji_0 = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/348264971_589673896302117_8714738300620693336_n.jpg");     // Reemplaza "URL_IMAGEN_0" con el enlace directo a la imagen correspondiente en Dropbox
-    }
+            function preload() {
+                img = loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/almagua-escuela.jpg");
+                emojis.push(loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/198845101_989500098492476_3555566408394435419_n.jpg"));
+                emojis.push(loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/333272083_222518770301921_4979215036742286426_n.jpg"));
+                emojis.push(loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/1605322805490.jpeg"));
+                emojis.push(loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/13706833_1813943348839850_764687113_a.jpg"));
+                emojis.push(loadImage("https://cdn.glitch.global/c536c49d-7661-4fd9-81b8-918d12539028/429311705_779736447350065_4516433906161515358_n.jpg"));
+            }
 
-    function setup() {
-      // Tamaño del canvas
-      createCanvas(1000, 800); 
-      noLoop();
-    }
+            function setup() {
+                canvasWidth = min(windowWidth, windowHeight) / 3;
+                canvasHeight = canvasWidth;
+                canvas = createCanvas(canvasWidth, canvasHeight);
+                canvas.parent("canvas-container");
+                loadImageSize();
+                maxZoom = 21; // Establece el máximo zoom permitido
 
-    function draw() {
-      background(0);
-      img.loadPixels();
+                // Ajustar offsetX y offsetY para centrar la imagen
+                offsetX = (canvasWidth - img.width * zoom) / 2;
+                offsetY = (canvasHeight - img.height * zoom) / 2;
+            }
 
-      var pixelSize = 5; // Tamaño de cada pixel
+            function draw() {
+                background(255);
+                img.loadPixels();
+                let pixelSize = 5;
 
-      for (var y = 0; y < img.height; y += pixelSize) {
-        for (var x = 0; x < img.width; x += pixelSize) {
-          var pix = getAverageColor(img, x, y, pixelSize);
-          var mosaicImage;
+                // Calcular el desplazamiento necesario para centrar la imagen
+                offsetX = constrain(offsetX, -(img.width * zoom - canvasWidth), 0);
+                offsetY = constrain(offsetY, -(img.height * zoom - canvasHeight), 0);
 
-          // Asigna la imagen de mosaico según el color promedio
-          if (pix <= 64) {
-            mosaicImage = emoji_0;
-          } else if (pix > 64 && pix <= 128) {
-            mosaicImage = emoji_64;
-          } else if (pix > 128 && pix <= 192) {
-            mosaicImage = emoji_128;
-          } else if (pix > 192 && pix <= 255) {
-            mosaicImage = emoji_192;
-          }
+                for (let y = 0; y < img.height; y += pixelSize) {
+                    for (let x = 0; x < img.width; x += pixelSize) {
+                        let pix = getAverageColor(img, x, y, pixelSize);
+                        let index = floor(map(pix, 0, 255, 0, emojis.length));
+                        let mosaicImage = emojis[index];
 
-          // Dibuja la imagen de mosaico
-          image(mosaicImage, x * zoom, y * zoom, pixelSize * zoom, pixelSize * zoom);
-        }
-      }
-    }
+                        // Ajustar la posición para centrar la imagen y considerar el desplazamiento
+                        let posX = x * zoom + offsetX;
+                        let posY = y * zoom + offsetY;
 
-    // Función para obtener el color promedio de un cuadro de píxeles
-    function getAverageColor(img, x, y, size) {
-      var total = 0;
-      var count = 0;
+                        image(mosaicImage, posX, posY, pixelSize * zoom, pixelSize * zoom);
+                    }
+                }
+            }
 
-      // Itera sobre los píxeles del cuadro
-      for (var j = 0; j < size; j++) {
-        for (var i = 0; i < size; i++) {
-          var index = (x + i + (y + j) * img.width) * 4;
-          var r = img.pixels[index];
-          var g = img.pixels[index + 1];
-          var b = img.pixels[index + 2];
-          var brightness = (r + g + b) / 3;
-          total += brightness;
-          count++;
-        }
-      }
+            function getAverageColor(img, x, y, size) {
+                let total = 0;
+                let count = 0;
 
-      // Retorna el promedio de brillo
-      return total / count;
-    }
+                for (let j = 0; j < size; j++) {
+                    for (let i = 0; i < size; i++) {
+                        let index = (x + i + (y + j) * img.width) * 4;
+                        let r = img.pixels[index];
+                        let g = img.pixels[index + 1];
+                        let b = img.pixels[index + 2];
+                        total += (r + g + b) / 3;
+                        count++;
+                    }
+                }
 
-    // Funciones para controlar el zoom
-    function mouseWheel(event) {
-      zoom += event.delta * 0.01;
-      zoom = constrain(zoom, 0.1, 10); // Limita el zoom
-      redraw();
-    }
+                return total / count;
+            }
 
-    function mouseMoved() {
-      redraw();
-    }
-  </script>
+            function loadImageSize() {
+                img.loadPixels();
+                let imgRatio = img.width / img.height;
+                if (imgRatio > 1) {
+                    canvasHeight = canvasWidth / imgRatio;
+                } else {
+                    canvasWidth = canvasHeight * imgRatio;
+                }
+                resizeCanvas(canvasWidth, canvasHeight);
+            }
+
+            function windowResized() {
+                canvasWidth = min(windowWidth, windowHeight) / 3;
+                loadImageSize();
+            }
+
+            function mouseWheel(event) {
+                if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                    zoom -= event.delta * 0.01;
+                    zoom = constrain(zoom, minZoom, maxZoom);
+                    return false;
+                }
+            }
+
+            function mousePressed() {
+                // Iniciar el arrastre de la imagen al presionar el mouse
+                if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                    isDragging = true;
+                    lastMouseX = mouseX;
+                    lastMouseY = mouseY;
+                }
+            }
+
+            function mouseDragged() {
+                // Actualizar el desplazamiento de la imagen mientras se arrastra el mouse
+                if (isDragging) {
+                    let deltaX = mouseX - lastMouseX;
+                    let deltaY = mouseY - lastMouseY;
+                    offsetX += deltaX;
+                    offsetY += deltaY;
+                    lastMouseX = mouseX;
+                    lastMouseY = mouseY;
+                }
+            }
+
+            function mouseReleased() {
+                // Detener el arrastre de la imagen al soltar el mouse
+                isDragging = false;
+            }
+
+            const canvasContainer = document.getElementById('canvas-container');
+
+            // Función para ajustar el zoom al desplazarse el scroll
+            function adjustZoomOnScroll(event) {
+                // Obtener la posición del scroll vertical
+                const scrollTop = window.scrollY || window.pageYOffset;
+                
+                // Calcular el zoom basado en la posición del scroll
+                const zoom = 1 + scrollTop * 0.001; // Ajusta el factor de escala según sea necesario
+                
+                // Aplicar el zoom al canvas container
+                canvasContainer.style.transform = `scale(${zoom})`;
+            }
+
+            // Escuchar el evento de desplazamiento del scroll
+            window.addEventListener('scroll', adjustZoomOnScroll);
+
+            // Función para dar movimiento al canvas al pasar el mouse sobre él
+            function rotateToMouse(e) {
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+                const leftX = mouseX - bounds.x;
+                const topY = mouseY - bounds.y;
+                const center = {
+                    x: leftX - bounds.width / 2,
+                    y: topY - bounds.height / 2
+                }
+                const distance = Math.sqrt(center.x**2 + center.y**2);
+                
+                canvasContainer.style.transform = `
+                    scale3d(1.07, 1.07, 1.07)
+                    rotate3d(
+                    ${center.y / 100},
+                    ${-center.x / 100},
+                    0,
+                    ${Math.log(distance)* 2}deg
+                    )
+                `;
+                
+                canvasContainer.querySelector('.glow').style.backgroundImage = `
+                    radial-gradient(
+                    circle at
+                    ${center.x * 2 + bounds.width/2}px
+                    ${center.y * 2 + bounds.height/2}px,
+                    #ffffff55,
+                    #0000000f
+                    )
+                `;
+            }
+
+            // Obtener el canvas-container
+            const bounds = canvasContainer.getBoundingClientRect();
+
+            // Escuchar los eventos del mouse
+            canvasContainer.addEventListener('mouseenter', () => {
+                document.addEventListener('mousemove', rotateToMouse);
+            });
+
+            canvasContainer.addEventListener('mouseleave', () => {
+                document.removeEventListener('mousemove', rotateToMouse);
+            });
+        </script>
+    </a-scene>
 </body>
 </html>
